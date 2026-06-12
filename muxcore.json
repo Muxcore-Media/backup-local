@@ -1,9 +1,9 @@
 {
-  "name": "Your Module",
-  "description": "Describe what your module does.",
+  "name": "Backup Local",
+  "description": "Local filesystem backup/restore provider",
   "version": "0.1.0",
-  "author": "You",
-  "roles": ["your-role"],
-  "capabilities": ["your.capability"],
+  "author": "MuxCore",
+  "roles": ["infrastructure"],
+  "capabilities": ["backup"],
   "contracts": []
 }

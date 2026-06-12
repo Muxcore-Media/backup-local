@@ -5,14 +5,14 @@ import (
 	"os"
 
 	modulesdk "github.com/Muxcore-Media/core/sdk/go/module"
-	"github.com/yourorg/your-module/internal"
+
+	"github.com/Muxcore-Media/backup-local/internal"
 )
 
 func main() {
-	mod := internal.NewModule()
+	mod := internal.NewModule(internal.Config{})
 	if err := modulesdk.Run(modulesdk.Config{
-		Module:   mod,
-		Insecure: true,
+		Module: mod,
 	}); err != nil {
 		slog.Error("module exited", "error", err)
 		os.Exit(1)
