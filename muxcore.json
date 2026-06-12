@@ -1,0 +1,9 @@
+{
+  "name": "Your Module",
+  "description": "Describe what your module does.",
+  "version": "0.1.0",
+  "author": "You",
+  "roles": ["your-role"],
+  "capabilities": ["your.capability"],
+  "contracts": []
+}
