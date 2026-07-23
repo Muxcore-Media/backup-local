@@ -13,17 +13,17 @@ services:
       retries: 10
       start_period: 5s
 
-  your-module:
+  backup-local:
     build:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "9400"
+      - "9302"
     environment:
       MUXCORE_GRPC_ADDR: core:9090
       MUXCORE_INSECURE_DISABLE_TLS: "true"
       MUXCORE_LOG_LEVEL: debug
-      MUXCORE_MODULE_ID: your-module
+      MUXCORE_MODULE_ID: backup-local
     depends_on:
       core:
         condition: service_healthy
