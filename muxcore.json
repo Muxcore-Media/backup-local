@@ -3,7 +3,12 @@
   "description": "Local filesystem backup/restore provider",
   "version": "0.1.0",
   "author": "MuxCore",
-  "roles": ["infrastructure"],
-  "capabilities": ["backup"],
+  "roles": [
+    "infrastructure"
+  ],
+  "capabilities": [
+    "backup",
+    "backup.local"
+  ],
   "contracts": []
 }
