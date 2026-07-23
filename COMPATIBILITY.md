@@ -10,7 +10,7 @@
 
 | Contract | Capability | Status |
 |----------|-----------|--------|
-| —        | —         | Planned |
+| —        | `backup`  | Current |
 
 ## Breaking Changes
 

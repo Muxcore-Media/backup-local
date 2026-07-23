@@ -9,4 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Initial project scaffold from muxcore-module-starter
+- Real `.tar.gz` CreateBackup / RestoreBackup with SHA-256 index entries, source-dir archiving, optional Backupable ExportState/ImportState, and path-traversal rejection on restore
+- Local `BackupService` proto (`proto/muxcore/backup/v1`)
+
+### Fixed
+
+- CreateBackup no longer writes empty archives; RestoreBackup no longer returns `{status:ok}` without extracting

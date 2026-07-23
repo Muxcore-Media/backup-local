@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+package muxcore.backup.v1;
+
+option go_package = "github.com/Muxcore-Media/backup-local/muxcore/backup/v1;backupv1";
+
+// BackupService is implemented by backup provider modules (e.g. backup-local).
+service BackupService {
+  rpc CreateBackup(CreateBackupRequest) returns (CreateBackupResponse);
+  rpc RestoreBackup(RestoreBackupRequest) returns (RestoreBackupResponse);
+  rpc ListBackups(ListBackupsRequest) returns (ListBackupsResponse);
+  rpc DeleteBackup(DeleteBackupRequest) returns (DeleteBackupResponse);
+}
+
+message BackupInfo {
+  string id = 1;
+  int64 timestamp_unix = 2;
+  int64 size_bytes = 3;
+  repeated string module_ids = 4;
+  string checksum_sha256 = 5;
+}
+
+message CreateBackupRequest {
+  // Optional filter of Backupable module IDs to include. Empty uses all registered exporters.
+  repeated string module_ids = 1;
+  // Optional extra filesystem paths to archive for this request (in addition to configured sources).
+  repeated string source_paths = 2;
+}
+
+message CreateBackupResponse {
+  BackupInfo backup = 1;
+}
+
+message RestoreBackupRequest {
+  string backup_id = 1;
+  // Directory to extract archive contents into. Required.
+  string target_path = 2;
+}
+
+message RestoreBackupResponse {
+  string status = 1;
+  int64 files_restored = 2;
+}
+
+message ListBackupsRequest {}
+
+message ListBackupsResponse {
+  repeated BackupInfo backups = 1;
+}
+
+message DeleteBackupRequest {
+  string backup_id = 1;
+}
+
+message DeleteBackupResponse {
+  string status = 1;
+}

@@ -1,9 +1,6 @@
 package internal
 
 import (
-	"archive/tar"
-	"bytes"
-	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -13,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -20,7 +18,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	backupv1 "github.com/Muxcore-Media/core/proto/gen/muxcore/backup/v1"
+	backupv1 "github.com/Muxcore-Media/backup-local/muxcore/backup/v1"
 	"github.com/Muxcore-Media/core/pkg/contracts"
 )
 
@@ -28,13 +26,22 @@ type backupMeta struct {
 	ID        string   `json:"id"`
 	Timestamp int64    `json:"timestamp"`
 	Size      int64    `json:"size"`
+	Checksum  string   `json:"checksum_sha256"`
 	ModuleIDs []string `json:"module_ids"`
+}
+
+// BackupablePeer is a named Backupable used when exporting/importing module state.
+type BackupablePeer struct {
+	ID      string
+	Backend contracts.Backupable
 }
 
 type Module struct {
 	backupv1.UnimplementedBackupServiceServer
 	mu       sync.Mutex
 	dir      string
+	sources  []string
+	peers    map[string]contracts.Backupable
 	backups  map[string]backupMeta
 	grpcSrv  *grpc.Server
 	grpcLis  net.Listener
@@ -45,10 +52,12 @@ type Module struct {
 }
 
 type Config struct {
-	ID       string
-	Dir      string
-	GRPCAddr string
-	HTTPAddr string
+	ID         string
+	Dir        string
+	SourceDirs []string
+	Peers      []BackupablePeer
+	GRPCAddr   string
+	HTTPAddr   string
 }
 
 func NewModule(cfg Config) *Module {
@@ -67,13 +76,37 @@ func NewModule(cfg Config) *Module {
 	if v := os.Getenv("BACKUP_DIR"); v != "" {
 		cfg.Dir = v
 	}
+	if v := os.Getenv("BACKUP_SOURCE_DIRS"); v != "" {
+		cfg.SourceDirs = splitCSV(v)
+	}
+	peers := make(map[string]contracts.Backupable, len(cfg.Peers))
+	for _, p := range cfg.Peers {
+		if p.ID == "" || p.Backend == nil {
+			continue
+		}
+		peers[p.ID] = p.Backend
+	}
 	return &Module{
 		id:       cfg.ID,
 		dir:      cfg.Dir,
+		sources:  append([]string(nil), cfg.SourceDirs...),
+		peers:    peers,
 		grpcAddr: cfg.GRPCAddr,
 		httpAddr: cfg.HTTPAddr,
 		backups:  make(map[string]backupMeta),
 	}
+}
+
+func splitCSV(v string) []string {
+	parts := strings.Split(v, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func (m *Module) Info() contracts.ModuleInfo {
@@ -84,7 +117,7 @@ func (m *Module) Info() contracts.ModuleInfo {
 		Roles:        []string{"infrastructure"},
 		Description:  "Local filesystem backup/restore provider",
 		Author:       "MuxCore",
-		Capabilities: []string{contracts.CapabilityBackup},
+		Capabilities: []string{contracts.CapabilityBackup, "backup.local"},
 		HTTPAddr:     m.grpcAddr,
 	}
 }
@@ -121,11 +154,11 @@ func (m *Module) Start(ctx context.Context) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"status":"ok"}`))
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
 	go func() {
 		slog.Info("backup HTTP started", "addr", m.httpAddr)
-		http.Serve(m.httpLis, mux)
+		_ = http.Serve(m.httpLis, mux)
 	}()
 	return nil
 }
@@ -133,6 +166,9 @@ func (m *Module) Start(ctx context.Context) error {
 func (m *Module) Stop(ctx context.Context) error {
 	if m.grpcSrv != nil {
 		m.grpcSrv.GracefulStop()
+	}
+	if m.httpLis != nil {
+		_ = m.httpLis.Close()
 	}
 	slog.Info("backup-local stopped")
 	return nil
@@ -143,26 +179,79 @@ func (m *Module) Health(ctx context.Context) error {
 }
 
 func (m *Module) CreateBackup(ctx context.Context, req *backupv1.CreateBackupRequest) (*backupv1.CreateBackupResponse, error) {
-	id := fmt.Sprintf("backup_%d", time.Now().Unix())
-	path := filepath.Join(m.dir, id+".tar.gz")
+	sources := append([]string(nil), m.sources...)
+	sources = append(sources, req.GetSourcePaths()...)
 
-	var buf bytes.Buffer
-	gw := gzip.NewWriter(&buf)
-	tw := tar.NewWriter(gw)
+	peerIDs := req.GetModuleIds()
+	m.mu.Lock()
+	peers := make(map[string]contracts.Backupable, len(m.peers))
+	for id, p := range m.peers {
+		peers[id] = p
+	}
+	m.mu.Unlock()
 
-	tw.Flush()
-	gw.Close()
-	tw.Close()
+	if len(peerIDs) == 0 {
+		for id := range peers {
+			peerIDs = append(peerIDs, id)
+		}
+		sort.Strings(peerIDs)
+	}
 
-	if err := os.WriteFile(path, buf.Bytes(), 0600); err != nil {
-		return nil, status.Error(codes.Internal, "write backup failed")
+	var entries []tarEntry
+	usedPrefixes := make(map[string]int)
+	for _, src := range sources {
+		if strings.TrimSpace(src) == "" {
+			continue
+		}
+		prefix := filepath.ToSlash(filepath.Join("data", uniqueSourcePrefix(src, usedPrefixes)))
+		collected, err := collectDirEntries(src, prefix)
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "source %q: %v", src, err)
+		}
+		entries = append(entries, collected...)
+	}
+
+	includedModules := make([]string, 0, len(peerIDs))
+	for _, id := range peerIDs {
+		peer, ok := peers[id]
+		if !ok {
+			return nil, status.Errorf(codes.NotFound, "backupable peer %q not registered", id)
+		}
+		data, err := peer.ExportState(ctx)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "export %q: %v", id, err)
+		}
+		entries = append(entries, tarEntry{
+			Name: filepath.ToSlash(filepath.Join("modules", id, "state.bin")),
+			Data: data,
+			Mode: 0600,
+		})
+		includedModules = append(includedModules, id)
+	}
+
+	if len(entries) == 0 {
+		return nil, status.Error(codes.FailedPrecondition, "nothing to back up: configure BACKUP_SOURCE_DIRS, pass source_paths, or register Backupable peers")
+	}
+
+	id := fmt.Sprintf("backup_%d", time.Now().UnixNano())
+	path := archivePath(m.dir, id)
+	if err := writeTarGz(path, entries); err != nil {
+		_ = os.Remove(path)
+		return nil, status.Errorf(codes.Internal, "write backup: %v", err)
+	}
+
+	sum, size, err := sha256File(path)
+	if err != nil {
+		_ = os.Remove(path)
+		return nil, status.Errorf(codes.Internal, "checksum backup: %v", err)
 	}
 
 	meta := backupMeta{
 		ID:        id,
 		Timestamp: time.Now().Unix(),
-		Size:      int64(buf.Len()),
-		ModuleIDs: req.GetModuleIds(),
+		Size:      size,
+		Checksum:  sum,
+		ModuleIDs: includedModules,
 	}
 
 	m.mu.Lock()
@@ -170,34 +259,75 @@ func (m *Module) CreateBackup(ctx context.Context, req *backupv1.CreateBackupReq
 	m.saveIndex()
 	m.mu.Unlock()
 
-	slog.Info("backup created", "id", id, "size", meta.Size)
-	return &backupv1.CreateBackupResponse{
-		Backup: &backupv1.BackupInfo{
-			Id: id, TimestampUnix: meta.Timestamp,
-			SizeBytes: meta.Size, ModuleIds: meta.ModuleIDs,
-		},
-	}, nil
+	slog.Info("backup created", "id", id, "size", meta.Size, "checksum", meta.Checksum, "entries", len(entries))
+	return &backupv1.CreateBackupResponse{Backup: toProto(meta)}, nil
 }
 
 func (m *Module) RestoreBackup(ctx context.Context, req *backupv1.RestoreBackupRequest) (*backupv1.RestoreBackupResponse, error) {
+	backupID := req.GetBackupId()
+	if backupID == "" {
+		return nil, status.Error(codes.InvalidArgument, "backup_id is required")
+	}
+	target, err := validateTargetDir(req.GetTargetPath())
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+
 	m.mu.Lock()
-	meta, ok := m.backups[req.GetBackupId()]
+	meta, ok := m.backups[backupID]
+	peers := make(map[string]contracts.Backupable, len(m.peers))
+	for id, p := range m.peers {
+		peers[id] = p
+	}
 	m.mu.Unlock()
 	if !ok {
 		return nil, status.Error(codes.NotFound, "backup not found")
 	}
-	_ = meta
-	return &backupv1.RestoreBackupResponse{Status: "ok"}, nil
+
+	path := archivePath(m.dir, meta.ID)
+	if _, err := os.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			return nil, status.Error(codes.NotFound, "backup archive missing on disk")
+		}
+		return nil, status.Errorf(codes.Internal, "stat archive: %v", err)
+	}
+
+	sum, _, err := sha256File(path)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "checksum archive: %v", err)
+	}
+	if meta.Checksum != "" && sum != meta.Checksum {
+		return nil, status.Error(codes.FailedPrecondition, "backup archive checksum mismatch")
+	}
+
+	if err := os.MkdirAll(target, 0700); err != nil {
+		return nil, status.Errorf(codes.Internal, "create target: %v", err)
+	}
+
+	files, moduleStates, err := extractTarGz(path, target)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "extract backup: %v", err)
+	}
+
+	for id, data := range moduleStates {
+		peer, ok := peers[id]
+		if !ok {
+			continue
+		}
+		if err := peer.ImportState(ctx, data); err != nil {
+			return nil, status.Errorf(codes.Internal, "import %q: %v", id, err)
+		}
+	}
+
+	slog.Info("backup restored", "id", backupID, "target", target, "files", files)
+	return &backupv1.RestoreBackupResponse{Status: "ok", FilesRestored: files}, nil
 }
 
 func (m *Module) ListBackups(ctx context.Context, req *backupv1.ListBackupsRequest) (*backupv1.ListBackupsResponse, error) {
 	m.mu.Lock()
-	var list []*backupv1.BackupInfo
+	list := make([]*backupv1.BackupInfo, 0, len(m.backups))
 	for _, b := range m.backups {
-		list = append(list, &backupv1.BackupInfo{
-			Id: b.ID, TimestampUnix: b.Timestamp,
-			SizeBytes: b.Size, ModuleIds: b.ModuleIDs,
-		})
+		list = append(list, toProto(b))
 	}
 	m.mu.Unlock()
 	sort.Slice(list, func(i, j int) bool {
@@ -217,8 +347,18 @@ func (m *Module) DeleteBackup(ctx context.Context, req *backupv1.DeleteBackupReq
 	if !ok {
 		return nil, status.Error(codes.NotFound, "backup not found")
 	}
-	os.Remove(filepath.Join(m.dir, meta.ID+".tar.gz"))
+	_ = os.Remove(archivePath(m.dir, meta.ID))
 	return &backupv1.DeleteBackupResponse{Status: "ok"}, nil
+}
+
+func toProto(b backupMeta) *backupv1.BackupInfo {
+	return &backupv1.BackupInfo{
+		Id:             b.ID,
+		TimestampUnix:  b.Timestamp,
+		SizeBytes:      b.Size,
+		ModuleIds:      b.ModuleIDs,
+		ChecksumSha256: b.Checksum,
+	}
 }
 
 func (m *Module) loadIndex() error {
@@ -255,5 +395,7 @@ func (m *Module) saveIndex() {
 		slog.Error("write backup index tmp", "error", err)
 		return
 	}
-	os.Rename(tmp, path)
+	if err := os.Rename(tmp, path); err != nil {
+		slog.Error("rename backup index", "error", err)
+	}
 }

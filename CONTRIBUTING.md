@@ -1,4 +1,4 @@
-# Contributing to Your Module
+# Contributing to Backup Local
 
 ## Development Setup
 
@@ -10,8 +10,8 @@
 ### Clone and build
 
 ```bash
-git clone https://github.com/yourorg/your-module.git
-cd your-module
+git clone https://github.com/Muxcore-Media/backup-local.git
+cd backup-local
 make build
 ```
 
@@ -23,7 +23,7 @@ cd ../core
 MUXCORE_INSECURE_DISABLE_TLS=true ./muxcored
 
 # Terminal 2: start module
-make build && ./your-module --muxcore-mesh-addr localhost:9090
+make build && ./backup-local --muxcore-mesh-addr localhost:9090
 ```
 
 ## Running Tests
@@ -60,10 +60,10 @@ refactor/<short-description>
 
 ## Pull Request Process
 
-1. Branch from `main`.
+1. Branch from `master`.
 2. Make your changes with tests.
 3. Run `make ci` locally — it must pass.
-4. Open a PR against `main`.
+4. Open a PR against `master`.
 5. Squash-merge preferred.
 
 ## Security Vulnerabilities
