@@ -20,6 +20,7 @@ import (
 
 	backupv1 "github.com/Muxcore-Media/backup-local/muxcore/backup/v1"
 	"github.com/Muxcore-Media/core/pkg/contracts"
+	modulesdk "github.com/Muxcore-Media/core/sdk/go/module"
 )
 
 type backupMeta struct {
@@ -113,7 +114,7 @@ func (m *Module) Info() contracts.ModuleInfo {
 	return contracts.ModuleInfo{
 		ID:           m.id,
 		Name:         "Backup Local",
-		Version:      "0.1.0",
+		Version:      "0.1.1",
 		Roles:        []string{"infrastructure"},
 		Description:  "Local filesystem backup/restore provider",
 		Author:       "MuxCore",
@@ -145,6 +146,7 @@ func (m *Module) Init(ctx context.Context) error {
 func (m *Module) Start(ctx context.Context) error {
 	m.grpcSrv = grpc.NewServer()
 	backupv1.RegisterBackupServiceServer(m.grpcSrv, m)
+	modulesdk.RegisterSettings(m.grpcSrv, m.id, m)
 	go func() {
 		slog.Info("backup gRPC started", "addr", m.grpcAddr)
 		if err := m.grpcSrv.Serve(m.grpcLis); err != nil {
@@ -179,16 +181,17 @@ func (m *Module) Health(ctx context.Context) error {
 }
 
 func (m *Module) CreateBackup(ctx context.Context, req *backupv1.CreateBackupRequest) (*backupv1.CreateBackupResponse, error) {
-	sources := append([]string(nil), m.sources...)
-	sources = append(sources, req.GetSourcePaths()...)
-
-	peerIDs := req.GetModuleIds()
 	m.mu.Lock()
+	sources := append([]string(nil), m.sources...)
+	dir := m.dir
 	peers := make(map[string]contracts.Backupable, len(m.peers))
 	for id, p := range m.peers {
 		peers[id] = p
 	}
 	m.mu.Unlock()
+	sources = append(sources, req.GetSourcePaths()...)
+
+	peerIDs := req.GetModuleIds()
 
 	if len(peerIDs) == 0 {
 		for id := range peers {
@@ -234,7 +237,7 @@ func (m *Module) CreateBackup(ctx context.Context, req *backupv1.CreateBackupReq
 	}
 
 	id := fmt.Sprintf("backup_%d", time.Now().UnixNano())
-	path := archivePath(m.dir, id)
+	path := archivePath(dir, id)
 	if err := writeTarGz(path, entries); err != nil {
 		_ = os.Remove(path)
 		return nil, status.Errorf(codes.Internal, "write backup: %v", err)
@@ -275,6 +278,7 @@ func (m *Module) RestoreBackup(ctx context.Context, req *backupv1.RestoreBackupR
 
 	m.mu.Lock()
 	meta, ok := m.backups[backupID]
+	dir := m.dir
 	peers := make(map[string]contracts.Backupable, len(m.peers))
 	for id, p := range m.peers {
 		peers[id] = p
@@ -284,7 +288,7 @@ func (m *Module) RestoreBackup(ctx context.Context, req *backupv1.RestoreBackupR
 		return nil, status.Error(codes.NotFound, "backup not found")
 	}
 
-	path := archivePath(m.dir, meta.ID)
+	path := archivePath(dir, meta.ID)
 	if _, err := os.Stat(path); err != nil {
 		if os.IsNotExist(err) {
 			return nil, status.Error(codes.NotFound, "backup archive missing on disk")
@@ -339,6 +343,7 @@ func (m *Module) ListBackups(ctx context.Context, req *backupv1.ListBackupsReque
 func (m *Module) DeleteBackup(ctx context.Context, req *backupv1.DeleteBackupRequest) (*backupv1.DeleteBackupResponse, error) {
 	m.mu.Lock()
 	meta, ok := m.backups[req.GetBackupId()]
+	dir := m.dir
 	if ok {
 		delete(m.backups, req.GetBackupId())
 		m.saveIndex()
@@ -347,7 +352,7 @@ func (m *Module) DeleteBackup(ctx context.Context, req *backupv1.DeleteBackupReq
 	if !ok {
 		return nil, status.Error(codes.NotFound, "backup not found")
 	}
-	_ = os.Remove(archivePath(m.dir, meta.ID))
+	_ = os.Remove(archivePath(dir, meta.ID))
 	return &backupv1.DeleteBackupResponse{Status: "ok"}, nil
 }
 
