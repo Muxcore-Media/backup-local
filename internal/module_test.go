@@ -68,6 +68,42 @@ func TestModuleLifecycle(t *testing.T) {
 	}
 }
 
+func TestBackupablePeerOnlyRoundTrip(t *testing.T) {
+	peer := &memPeer{data: []byte("peer-only-state")}
+	m := testModule(t, BackupablePeer{ID: "exporter-a", Backend: peer})
+	ctx := context.Background()
+
+	created, err := m.CreateBackup(ctx, &backupv1.CreateBackupRequest{
+		ModuleIds: []string{"exporter-a"},
+	})
+	if err != nil {
+		t.Fatalf("CreateBackup (peer only): %v", err)
+	}
+	info := created.GetBackup()
+	if info.GetSizeBytes() <= 0 {
+		t.Fatalf("expected non-empty archive from Backupable peer, got %+v", info)
+	}
+	if len(info.GetModuleIds()) != 1 || info.GetModuleIds()[0] != "exporter-a" {
+		t.Fatalf("module ids: %v", info.GetModuleIds())
+	}
+
+	peer.data = []byte("wiped")
+	target := t.TempDir()
+	restored, err := m.RestoreBackup(ctx, &backupv1.RestoreBackupRequest{
+		BackupId:   info.GetId(),
+		TargetPath: target,
+	})
+	if err != nil {
+		t.Fatalf("RestoreBackup: %v", err)
+	}
+	if restored.GetStatus() != "ok" {
+		t.Fatalf("restore resp: %+v", restored)
+	}
+	if string(peer.data) != "peer-only-state" {
+		t.Fatalf("ImportState: got %q want peer-only-state", peer.data)
+	}
+}
+
 func TestCreateBackupEmptyFails(t *testing.T) {
 	m := testModule(t)
 	ctx := context.Background()
