@@ -114,11 +114,11 @@ func (m *Module) Info() contracts.ModuleInfo {
 	return contracts.ModuleInfo{
 		ID:           m.id,
 		Name:         "Backup Local",
-		Version:      "0.1.1",
+		Version:      "0.1.2",
 		Roles:        []string{"infrastructure"},
 		Description:  "Local filesystem backup/restore provider",
 		Author:       "MuxCore",
-		Capabilities: []string{contracts.CapabilityBackup, "backup.local"},
+		Capabilities: []string{contracts.CapabilityBackup, "backup.local", "settings"},
 		HTTPAddr:     m.grpcAddr,
 	}
 }

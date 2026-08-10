@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.2] — 2026-08-10
+
+### Added
+
+- Advertise `settings` capability so admin-ui discovers SettingsProvider without ListAll probing.
+
 All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
