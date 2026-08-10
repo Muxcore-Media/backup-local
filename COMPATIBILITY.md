@@ -10,7 +10,19 @@
 
 | Contract | Capability | Status |
 |----------|-----------|--------|
-| —        | `backup`  | Current |
+| BackupService (local proto) | `backup` | Current |
+| `contracts.Backupable` peers | ExportState / ImportState | Optional inputs to Create/Restore |
+
+## Backupable peer path
+
+`CreateBackup` can archive:
+
+1. `source_paths` / `BACKUP_SOURCE_DIRS` filesystem trees under `data/<basename>/…`
+2. Registered **Backupable** peers → `modules/<id>/state.bin` via `ExportState`
+
+`RestoreBackup` extracts into `target_path`, then calls `ImportState` on registered peers whose state is present in the archive. Peers that were not registered at restore time are skipped (files remain on disk under `modules/`).
+
+Unit coverage: `TestBackupablePeerOnlyRoundTrip` and `TestRoundTripCreateListRestoreDelete` exercise Export → archive → Import without a live muxcored mesh.
 
 ## Breaking Changes
 
