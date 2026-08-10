@@ -7,10 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] — 2026-08-09
+
 ### Added
 
 - Real `.tar.gz` CreateBackup / RestoreBackup with SHA-256 index entries, source-dir archiving, optional Backupable ExportState/ImportState, and path-traversal rejection on restore
 - Local `BackupService` proto (`proto/muxcore/backup/v1`)
+- Dedicated Backupable-peer-only round-trip test + COMPATIBILITY peer-path notes
 
 ### Fixed
 
