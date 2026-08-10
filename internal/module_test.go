@@ -287,3 +287,34 @@ func TestSafeJoin(t *testing.T) {
 		t.Fatalf("dest=%q", dest)
 	}
 }
+
+func TestSettingsBackupDirAndSources(t *testing.T) {
+	dirA := t.TempDir()
+	dirB := t.TempDir()
+	src := t.TempDir()
+	if err := os.WriteFile(filepath.Join(src, "f.txt"), []byte("x"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	m := NewModule(Config{Dir: dirA, GRPCAddr: "127.0.0.1:0", HTTPAddr: "127.0.0.1:0"})
+	ctx := context.Background()
+	if err := m.Init(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defs := m.Settings()
+	if len(defs) != 2 || defs[0].Key != "backup_dir" {
+		t.Fatalf("Settings=%+v", defs)
+	}
+	if err := m.UpdateSetting("source_dirs", src); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.UpdateSetting("backup_dir", dirB); err != nil {
+		t.Fatal(err)
+	}
+	resp, err := m.CreateBackup(ctx, &backupv1.CreateBackupRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dirB, resp.GetBackup().GetId()+".tar.gz")); err != nil {
+		t.Fatalf("archive missing in new dir: %v", err)
+	}
+}
