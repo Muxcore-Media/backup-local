@@ -253,7 +253,7 @@ func writeEvilArchive(path string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	gw := gzip.NewWriter(f)
 	tw := tar.NewWriter(gw)
 	payload := []byte("pwned")
