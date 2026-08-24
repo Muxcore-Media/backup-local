@@ -21,7 +21,7 @@ func sha256File(path string) (string, int64, error) {
 	if err != nil {
 		return "", 0, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	h := sha256.New()
 	n, err := io.Copy(h, f)
 	if err != nil {
@@ -77,7 +77,7 @@ func writeTarGz(path string, entries []tarEntry) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	gw := gzip.NewWriter(f)
 	tw := tar.NewWriter(gw)
@@ -162,13 +162,13 @@ func extractTarGz(archive, target string) (int64, map[string][]byte, error) {
 	if err != nil {
 		return 0, nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	gr, err := gzip.NewReader(f)
 	if err != nil {
 		return 0, nil, err
 	}
-	defer gr.Close()
+	defer func() { _ = gr.Close() }()
 
 	tr := tar.NewReader(gr)
 	var files int64
@@ -191,7 +191,7 @@ func extractTarGz(archive, target string) (int64, map[string][]byte, error) {
 			if err := os.MkdirAll(dest, 0700); err != nil {
 				return files, moduleStates, err
 			}
-		case tar.TypeReg, tar.TypeRegA:
+		case tar.TypeReg:
 			dest, err := safeJoin(target, hdr.Name)
 			if err != nil {
 				return files, moduleStates, err
