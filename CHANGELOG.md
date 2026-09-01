@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `BackupableService` gRPC + core discovery for `backupable` peers
+- Streaming tar writer, exclude globs, path allowlist, durable index reconcile
+- Retention (`max_backups`, `max_age_days`), scheduled backups, AES-GCM encryption
+- Atomic restore staging, real Health/`--health-check`, Forgejo `-race` + golangci-lint
+
 ## [0.1.1] — 2026-08-10
 
 ### Added

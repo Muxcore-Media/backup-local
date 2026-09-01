@@ -3,6 +3,7 @@ package internal
 import (
 	"archive/tar"
 	"compress/gzip"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -10,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/Muxcore-Media/core/pkg/contracts"
 )
 
 func archivePath(dir, id string) string {
@@ -55,24 +58,7 @@ func safeJoin(root, name string) (string, error) {
 	return dest, nil
 }
 
-func validateTargetDir(target string) (string, error) {
-	if strings.TrimSpace(target) == "" {
-		return "", fmt.Errorf("target_path is required")
-	}
-	abs, err := filepath.Abs(target)
-	if err != nil {
-		return "", fmt.Errorf("resolve target_path: %w", err)
-	}
-	return filepath.Clean(abs), nil
-}
-
-type tarEntry struct {
-	Name string
-	Data []byte
-	Mode int64
-}
-
-func writeTarGz(path string, entries []tarEntry) error {
+func writeStreamingTarGz(ctx context.Context, path string, sources []string, peers map[string]contracts.Backupable, peerIDs []string, excludeGlobs []string) error {
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
 	if err != nil {
 		return err
@@ -82,21 +68,41 @@ func writeTarGz(path string, entries []tarEntry) error {
 	gw := gzip.NewWriter(f)
 	tw := tar.NewWriter(gw)
 
-	for _, e := range entries {
-		hdr := &tar.Header{
-			Name: e.Name,
-			Mode: e.Mode,
-			Size: int64(len(e.Data)),
+	usedPrefixes := make(map[string]int)
+	for _, src := range sources {
+		if strings.TrimSpace(src) == "" {
+			continue
 		}
-		if hdr.Mode == 0 {
-			hdr.Mode = 0600
-		}
-		if err := tw.WriteHeader(hdr); err != nil {
+		prefix := filepath.ToSlash(filepath.Join("data", uniqueSourcePrefix(src, usedPrefixes)))
+		if err := appendDirToTar(ctx, tw, src, prefix, excludeGlobs); err != nil {
 			_ = tw.Close()
 			_ = gw.Close()
 			return err
 		}
-		if _, err := tw.Write(e.Data); err != nil {
+	}
+
+	for _, id := range peerIDs {
+		select {
+		case <-ctx.Done():
+			_ = tw.Close()
+			_ = gw.Close()
+			return ctx.Err()
+		default:
+		}
+		peer, ok := peers[id]
+		if !ok {
+			_ = tw.Close()
+			_ = gw.Close()
+			return fmt.Errorf("backupable peer %q not registered", id)
+		}
+		data, err := peer.ExportState(ctx)
+		if err != nil {
+			_ = tw.Close()
+			_ = gw.Close()
+			return fmt.Errorf("export %q: %w", id, err)
+		}
+		name := filepath.ToSlash(filepath.Join("modules", id, "state.bin"))
+		if err := writeTarBytes(tw, name, data, 0600); err != nil {
 			_ = tw.Close()
 			_ = gw.Close()
 			return err
@@ -110,27 +116,32 @@ func writeTarGz(path string, entries []tarEntry) error {
 	return gw.Close()
 }
 
-func collectDirEntries(root, tarPrefix string) ([]tarEntry, error) {
+func appendDirToTar(ctx context.Context, tw *tar.Writer, root, tarPrefix string, excludeGlobs []string) error {
 	rootAbs, err := filepath.Abs(root)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	info, err := os.Stat(rootAbs)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if !info.IsDir() {
 		data, err := os.ReadFile(rootAbs)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		return []tarEntry{{Name: filepath.ToSlash(filepath.Join(tarPrefix, filepath.Base(rootAbs))), Data: data, Mode: 0600}}, nil
+		name := filepath.ToSlash(filepath.Join(tarPrefix, filepath.Base(rootAbs)))
+		return writeTarBytes(tw, name, data, 0600)
 	}
 
-	var entries []tarEntry
-	err = filepath.Walk(rootAbs, func(path string, fi os.FileInfo, walkErr error) error {
+	return filepath.Walk(rootAbs, func(path string, fi os.FileInfo, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
 		}
 		if fi.IsDir() {
 			return nil
@@ -142,22 +153,61 @@ func collectDirEntries(root, tarPrefix string) ([]tarEntry, error) {
 		if err != nil {
 			return err
 		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return err
+		if shouldExclude(rel, excludeGlobs) {
+			return nil
 		}
 		name := filepath.ToSlash(filepath.Join(tarPrefix, rel))
 		mode := int64(fi.Mode().Perm())
 		if mode == 0 {
 			mode = 0600
 		}
-		entries = append(entries, tarEntry{Name: name, Data: data, Mode: mode})
-		return nil
+		return writeTarFile(ctx, tw, path, name, fi.Size(), mode)
 	})
-	return entries, err
 }
 
-func extractTarGz(archive, target string) (int64, map[string][]byte, error) {
+func writeTarFile(ctx context.Context, tw *tar.Writer, srcPath, tarName string, size int64, mode int64) error {
+	hdr := &tar.Header{Name: tarName, Mode: mode, Size: size}
+	if err := tw.WriteHeader(hdr); err != nil {
+		return err
+	}
+	f, err := os.Open(srcPath)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = f.Close() }()
+	buf := make([]byte, 32*1024)
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+		n, readErr := f.Read(buf)
+		if n > 0 {
+			if _, err := tw.Write(buf[:n]); err != nil {
+				return err
+			}
+		}
+		if readErr == io.EOF {
+			break
+		}
+		if readErr != nil {
+			return readErr
+		}
+	}
+	return nil
+}
+
+func writeTarBytes(tw *tar.Writer, name string, data []byte, mode int64) error {
+	hdr := &tar.Header{Name: name, Mode: mode, Size: int64(len(data))}
+	if err := tw.WriteHeader(hdr); err != nil {
+		return err
+	}
+	_, err := tw.Write(data)
+	return err
+}
+
+func extractTarGzToDir(archive, target string) (int64, map[string][]byte, error) {
 	f, err := os.Open(archive)
 	if err != nil {
 		return 0, nil, err
@@ -253,4 +303,52 @@ func uniqueSourcePrefix(path string, used map[string]int) string {
 		return base
 	}
 	return fmt.Sprintf("%s_%d", base, n+1)
+}
+
+func atomicRestoreTree(staging, target string) error {
+	if err := os.MkdirAll(filepath.Dir(target), 0700); err != nil {
+		return err
+	}
+	backup := target + ".backup-pre-restore"
+	_ = os.RemoveAll(backup)
+	if _, err := os.Stat(target); err == nil {
+		if err := os.Rename(target, backup); err != nil {
+			return fmt.Errorf("rename existing target: %w", err)
+		}
+		defer func() { _ = os.RemoveAll(backup) }()
+	}
+	if err := os.Rename(staging, target); err != nil {
+		if _, statErr := os.Stat(backup); statErr == nil {
+			_ = os.Rename(backup, target)
+		}
+		return fmt.Errorf("promote staging tree: %w", err)
+	}
+	return nil
+}
+
+// writeEvilArchive kept for traversal tests.
+func writeEvilArchive(path string) error {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = f.Close() }()
+	gw := gzip.NewWriter(f)
+	tw := tar.NewWriter(gw)
+	payload := []byte("pwned")
+	hdr := &tar.Header{
+		Name: "../escape.txt",
+		Mode: 0600,
+		Size: int64(len(payload)),
+	}
+	if err := tw.WriteHeader(hdr); err != nil {
+		return err
+	}
+	if _, err := tw.Write(payload); err != nil {
+		return err
+	}
+	if err := tw.Close(); err != nil {
+		return err
+	}
+	return gw.Close()
 }

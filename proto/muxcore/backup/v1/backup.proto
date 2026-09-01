@@ -55,3 +55,23 @@ message DeleteBackupRequest {
 message DeleteBackupResponse {
   string status = 1;
 }
+
+// BackupableService is implemented by modules that export/import state for backup-local.
+service BackupableService {
+  rpc ExportState(ExportStateRequest) returns (ExportStateResponse);
+  rpc ImportState(ImportStateRequest) returns (ImportStateResponse);
+}
+
+message ExportStateRequest {}
+
+message ExportStateResponse {
+  bytes data = 1;
+}
+
+message ImportStateRequest {
+  bytes data = 1;
+}
+
+message ImportStateResponse {
+  string status = 1;
+}
