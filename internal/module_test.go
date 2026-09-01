@@ -448,6 +448,35 @@ func TestHealthOKAndDegraded(t *testing.T) {
 	}
 }
 
+func TestScheduledBackupTriggersCreate(t *testing.T) {
+	m := testModule(t, BackupablePeer{ID: "p", Backend: &memPeer{data: []byte("scheduled")}})
+	m.mu.Lock()
+	m.scheduleCronVal = "@every 50ms"
+	m.mu.Unlock()
+
+	ctx := context.Background()
+	if err := m.Init(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = m.Stop(ctx) }()
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		list, err := m.ListBackups(ctx, &backupv1.ListBackupsRequest{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(list.GetBackups()) > 0 {
+			return
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	t.Fatal("scheduled CreateBackup did not run within deadline")
+}
+
 func TestEncryptedBackupRoundTrip(t *testing.T) {
 	key := make([]byte, 32)
 	_, _ = rand.Read(key)
