@@ -58,7 +58,7 @@ func safeJoin(root, name string) (string, error) {
 	return dest, nil
 }
 
-func writeStreamingTarGz(ctx context.Context, path string, sources []string, peers map[string]contracts.Backupable, peerIDs []string, excludeGlobs []string) error {
+func writeStreamingTarGz(ctx context.Context, path string, sources []string, peers map[string]contracts.Backupable, peerIDs []string, excludeGlobs []string, onlyInclude map[string]struct{}) error {
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
 	if err != nil {
 		return err
@@ -74,7 +74,7 @@ func writeStreamingTarGz(ctx context.Context, path string, sources []string, pee
 			continue
 		}
 		prefix := filepath.ToSlash(filepath.Join("data", uniqueSourcePrefix(src, usedPrefixes)))
-		if err := appendDirToTar(ctx, tw, src, prefix, excludeGlobs); err != nil {
+		if err := appendDirToTar(ctx, tw, src, prefix, excludeGlobs, onlyInclude); err != nil {
 			_ = tw.Close()
 			_ = gw.Close()
 			return err
@@ -116,7 +116,7 @@ func writeStreamingTarGz(ctx context.Context, path string, sources []string, pee
 	return gw.Close()
 }
 
-func appendDirToTar(ctx context.Context, tw *tar.Writer, root, tarPrefix string, excludeGlobs []string) error {
+func appendDirToTar(ctx context.Context, tw *tar.Writer, root, tarPrefix string, excludeGlobs []string, onlyInclude map[string]struct{}) error {
 	rootAbs, err := filepath.Abs(root)
 	if err != nil {
 		return err
@@ -126,11 +126,16 @@ func appendDirToTar(ctx context.Context, tw *tar.Writer, root, tarPrefix string,
 		return err
 	}
 	if !info.IsDir() {
+		name := filepath.ToSlash(filepath.Join(tarPrefix, filepath.Base(rootAbs)))
+		if onlyInclude != nil {
+			if _, ok := onlyInclude[name]; !ok {
+				return nil
+			}
+		}
 		data, err := os.ReadFile(rootAbs)
 		if err != nil {
 			return err
 		}
-		name := filepath.ToSlash(filepath.Join(tarPrefix, filepath.Base(rootAbs)))
 		return writeTarBytes(tw, name, data, 0600)
 	}
 
@@ -157,10 +162,12 @@ func appendDirToTar(ctx context.Context, tw *tar.Writer, root, tarPrefix string,
 			return nil
 		}
 		name := filepath.ToSlash(filepath.Join(tarPrefix, rel))
-		mode := int64(fi.Mode().Perm())
-		if mode == 0 {
-			mode = 0600
+		if onlyInclude != nil {
+			if _, ok := onlyInclude[name]; !ok {
+				return nil
+			}
 		}
+		mode := restrictFileMode(int64(fi.Mode().Perm()))
 		return writeTarFile(ctx, tw, path, name, fi.Size(), mode)
 	})
 }

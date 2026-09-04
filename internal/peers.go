@@ -111,7 +111,9 @@ func (m *Module) refreshBackupablePeers(ctx context.Context) {
 	}
 	m.mu.Lock()
 	for _, old := range m.peerConns {
-		_ = old.Close()
+		if err := old.Close(); err != nil {
+			slog.Warn("backup-local: close stale peer connection failed", "error", err)
+		}
 	}
 	m.peers = peers
 	m.peerConns = conns
@@ -164,7 +166,9 @@ func (m *Module) tryDialCore(meshAddr string) bool {
 	}
 	m.mu.Lock()
 	if m.mc != nil {
-		_ = m.mc.Close()
+		if err := m.mc.Close(); err != nil {
+			slog.Warn("backup-local: close previous mesh client failed", "error", err)
+		}
 	}
 	m.mc = c
 	if m.cryptor == nil {
@@ -240,6 +244,7 @@ func (m *Module) buildCryptor(mc *client.Client) (*archiveCryptor, *grpc.ClientC
 	client := encryptionv1.NewEncryptionServiceClient(conn)
 	c, err := newArchiveCryptor("", client)
 	if err != nil {
+		slog.Warn("backup-local: encryption module cryptor init failed", "error", err)
 		_ = conn.Close()
 		return nil, nil
 	}

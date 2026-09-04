@@ -608,6 +608,52 @@ func TestSettingsBackupDirAndSources(t *testing.T) {
 	}
 }
 
+func TestSettingsRejectTraversalBackupDir(t *testing.T) {
+	m := testModule(t)
+	if err := m.UpdateSetting("backup_dir", "../escape"); err == nil {
+		t.Fatal("expected traversal backup_dir to be rejected")
+	}
+}
+
+func TestSettingsRejectInvalidSchedule(t *testing.T) {
+	m := testModule(t)
+	if err := m.UpdateSetting("schedule_cron", "not a cron"); err == nil {
+		t.Fatal("expected invalid schedule_cron to be rejected")
+	}
+}
+
+func TestSettingsRejectTraversalExcludeGlob(t *testing.T) {
+	m := testModule(t)
+	if err := m.UpdateSetting("exclude_globs", "../secrets"); err == nil {
+		t.Fatal("expected traversal exclude_glob to be rejected")
+	}
+}
+
+func TestBackupArchiveNotWorldReadable(t *testing.T) {
+	m := testModule(t, BackupablePeer{ID: "p", Backend: &memPeer{data: []byte("x")}})
+	ctx := context.Background()
+	created, err := m.CreateBackup(ctx, &backupv1.CreateBackupRequest{ModuleIds: []string{"p"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	arch := archivePath(m.dir, created.GetBackup().GetId())
+	info, err := os.Stat(arch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm()&0077 != 0 {
+		t.Fatalf("archive is world/group accessible: %o", info.Mode().Perm())
+	}
+}
+
+func TestDeleteBackupRejectsInvalidID(t *testing.T) {
+	m := testModule(t)
+	_, err := m.DeleteBackup(context.Background(), &backupv1.DeleteBackupRequest{BackupId: "../evil"})
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("want InvalidArgument, got %v", err)
+	}
+}
+
 func TestDeleteBackupFailsWhenArchiveMissing(t *testing.T) {
 	m := testModule(t)
 	ctx := context.Background()
@@ -620,6 +666,125 @@ func TestDeleteBackupFailsWhenArchiveMissing(t *testing.T) {
 	_, err := m.DeleteBackup(ctx, &backupv1.DeleteBackupRequest{BackupId: "x"})
 	if err == nil {
 		t.Fatal("expected error when archive file missing")
+	}
+}
+
+func TestVerifyBackupChecksumAndRestoreTest(t *testing.T) {
+	peer := &memPeer{data: []byte("verify-me")}
+	m := testModule(t, BackupablePeer{ID: "p", Backend: peer})
+	ctx := context.Background()
+
+	created, err := m.CreateBackup(ctx, &backupv1.CreateBackupRequest{ModuleIds: []string{"p"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := created.GetBackup().GetId()
+
+	resp, err := m.VerifyBackup(ctx, &backupv1.VerifyBackupRequest{BackupId: id, RestoreTest: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !resp.GetValid() || !resp.GetChecksumOk() || !resp.GetRestoreTestOk() {
+		t.Fatalf("verify: %+v", resp)
+	}
+
+	m.mu.Lock()
+	meta := m.backups[id]
+	meta.Checksum = "bad"
+	m.backups[id] = meta
+	m.mu.Unlock()
+
+	resp, err = m.VerifyBackup(ctx, &backupv1.VerifyBackupRequest{BackupId: id})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.GetValid() || resp.GetChecksumOk() {
+		t.Fatalf("expected checksum failure, got %+v", resp)
+	}
+}
+
+func TestIncrementalBackupOnlyChangedFiles(t *testing.T) {
+	m := testModule(t)
+	ctx := context.Background()
+	src := t.TempDir()
+	testAllowedRoot(t, m, src)
+	m.mu.Lock()
+	m.sources = []string{src}
+	m.mu.Unlock()
+
+	pathA := filepath.Join(src, "a.txt")
+	pathB := filepath.Join(src, "b.txt")
+	if err := os.WriteFile(pathA, []byte("v1"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(pathB, []byte("stable"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	full, err := m.CreateBackup(ctx, &backupv1.CreateBackupRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if full.GetBackup().GetIncremental() {
+		t.Fatal("first backup should be full")
+	}
+
+	if err := os.WriteFile(pathA, []byte("v2"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	incr, err := m.CreateBackup(ctx, &backupv1.CreateBackupRequest{Incremental: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !incr.GetBackup().GetIncremental() {
+		t.Fatal("expected incremental backup")
+	}
+	if incr.GetBackup().GetParentId() != full.GetBackup().GetId() {
+		t.Fatalf("parent=%q want %q", incr.GetBackup().GetParentId(), full.GetBackup().GetId())
+	}
+	if incr.GetBackup().GetSizeBytes() >= full.GetBackup().GetSizeBytes() {
+		t.Fatalf("incremental size %d should be smaller than full %d", incr.GetBackup().GetSizeBytes(), full.GetBackup().GetSizeBytes())
+	}
+
+	target := t.TempDir()
+	testAllowedRoot(t, m, target)
+	restored, err := m.RestoreBackup(ctx, &backupv1.RestoreBackupRequest{
+		BackupId: incr.GetBackup().GetId(), TargetPath: target,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restored.GetFilesRestored() < 2 {
+		t.Fatalf("restore files: %d", restored.GetFilesRestored())
+	}
+	got, err := os.ReadFile(filepath.Join(target, "data", filepath.Base(src), "a.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "v2" {
+		t.Fatalf("a.txt=%q", got)
+	}
+	gotB, err := os.ReadFile(filepath.Join(target, "data", filepath.Base(src), "b.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(gotB) != "stable" {
+		t.Fatalf("b.txt=%q", gotB)
+	}
+}
+
+func TestCreateBackupVerifyAfterCreate(t *testing.T) {
+	m := testModule(t, BackupablePeer{ID: "p", Backend: &memPeer{data: []byte("x")}})
+	ctx := context.Background()
+	created, err := m.CreateBackup(ctx, &backupv1.CreateBackupRequest{
+		ModuleIds:         []string{"p"},
+		VerifyAfterCreate: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.GetBackup().GetId() == "" {
+		t.Fatal("empty id")
 	}
 }
 

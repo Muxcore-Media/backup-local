@@ -10,6 +10,7 @@ service BackupService {
   rpc RestoreBackup(RestoreBackupRequest) returns (RestoreBackupResponse);
   rpc ListBackups(ListBackupsRequest) returns (ListBackupsResponse);
   rpc DeleteBackup(DeleteBackupRequest) returns (DeleteBackupResponse);
+  rpc VerifyBackup(VerifyBackupRequest) returns (VerifyBackupResponse);
 }
 
 message BackupInfo {
@@ -18,6 +19,9 @@ message BackupInfo {
   int64 size_bytes = 3;
   repeated string module_ids = 4;
   string checksum_sha256 = 5;
+  bool incremental = 6;
+  string parent_id = 7;
+  bool encrypted = 8;
 }
 
 message CreateBackupRequest {
@@ -25,6 +29,26 @@ message CreateBackupRequest {
   repeated string module_ids = 1;
   // Optional extra filesystem paths to archive for this request (in addition to configured sources).
   repeated string source_paths = 2;
+  // When true, only archive files changed since the most recent backup.
+  bool incremental = 3;
+  // When true, run checksum verification (and optional restore test) after creation.
+  bool verify_after_create = 4;
+}
+
+message VerifyBackupRequest {
+  string backup_id = 1;
+  // Extract to a temp dir to validate archive integrity without applying restore.
+  bool restore_test = 2;
+}
+
+message VerifyBackupResponse {
+  bool valid = 1;
+  string checksum_sha256 = 2;
+  int64 size_bytes = 3;
+  bool checksum_ok = 4;
+  bool restore_test_ok = 5;
+  int64 files_in_archive = 6;
+  string message = 7;
 }
 
 message CreateBackupResponse {

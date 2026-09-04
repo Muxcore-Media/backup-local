@@ -55,6 +55,7 @@ func (m *Module) scheduleCron() string {
 }
 
 func (m *Module) pruneBackups(ctx context.Context) error {
+	start := time.Now()
 	m.mu.Lock()
 	maxBackups := m.maxBackups
 	maxAgeDays := m.maxAgeDays
@@ -95,6 +96,9 @@ func (m *Module) pruneBackups(ctx context.Context) error {
 		if _, err := m.DeleteBackup(ctx, &backupv1.DeleteBackupRequest{BackupId: id}); err != nil {
 			slog.Warn("backup-local: prune delete failed", "id", id, "error", err)
 		}
+	}
+	if len(toDelete) > 0 {
+		logBackupOp("rotate", "", start, -1, "deleted", len(toDelete), "max_backups", maxBackups, "max_age_days", maxAgeDays)
 	}
 	return nil
 }

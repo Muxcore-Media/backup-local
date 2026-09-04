@@ -21,8 +21,6 @@ replace github.com/Muxcore-Media/core/sdk/go/module => ../core/sdk/go/module
 replace github.com/Muxcore-Media/core/sdk/go/client => ../core/sdk/go/client
 
 require (
-	github.com/Muxcore-Media/contracts-media v0.1.0 // indirect
-	github.com/Muxcore-Media/core/pkg/tenant v0.5.8 // indirect
 	golang.org/x/net v0.56.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.40.0 // indirect

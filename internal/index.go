@@ -3,6 +3,7 @@ package internal
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -40,16 +41,22 @@ func (m *Module) reconcileIndex(indexCorrupt bool) error {
 		if id == "" {
 			continue
 		}
+		if err := validateBackupID(id); err != nil {
+			slog.Warn("backup-local: skipping archive with invalid id", "path", p, "error", err)
+			continue
+		}
 		onDisk[id] = struct{}{}
 		if _, ok := m.backups[id]; ok {
 			continue
 		}
 		sum, size, err := sha256File(p)
 		if err != nil {
+			slog.Warn("backup-local: reconcile archive checksum failed", "path", p, "error", err)
 			continue
 		}
 		fi, err := os.Stat(p)
 		if err != nil {
+			slog.Warn("backup-local: reconcile archive stat failed", "path", p, "error", err)
 			continue
 		}
 		m.backups[id] = backupMeta{
