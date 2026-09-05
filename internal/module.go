@@ -16,8 +16,10 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
 
+	"github.com/Muxcore-Media/backup-local/internal/grpctls"
 	backupv1 "github.com/Muxcore-Media/backup-local/muxcore/backup/v1"
 	"github.com/Muxcore-Media/core/pkg/contracts"
 	modulesdk "github.com/Muxcore-Media/core/sdk/go/module"
@@ -69,11 +71,12 @@ func NewModule(cfg Config) *Module {
 		cfg.Dir = "backups"
 	}
 	if cfg.GRPCAddr == "" {
-		cfg.GRPCAddr = ":9302"
+		cfg.GRPCAddr = "127.0.0.1:9302"
 	}
 	if cfg.HTTPAddr == "" {
 		cfg.HTTPAddr = ":9303"
 	}
+	cfg.GRPCAddr = resolveGRPCAddr(cfg.GRPCAddr)
 	if v := os.Getenv("BACKUP_DIR"); v != "" {
 		cfg.Dir = v
 	}
@@ -144,7 +147,21 @@ func (m *Module) Init(ctx context.Context) error {
 }
 
 func (m *Module) Start(ctx context.Context) error {
-	m.grpcSrv = grpc.NewServer()
+	var grpcOpts []grpc.ServerOption
+	tlsCfg, err := grpctls.ServerConfig()
+	if err != nil {
+		return fmt.Errorf("gRPC TLS: %w", err)
+	}
+	if tlsCfg != nil {
+		grpcOpts = append(grpcOpts, grpc.Creds(credentials.NewTLS(tlsCfg)))
+		slog.Info("backup-local gRPC TLS enabled", "addr", m.grpcAddr)
+	} else {
+		slog.Warn("backup-local gRPC listening without TLS (dev only)",
+			"addr", m.grpcAddr,
+			"hint", "unset MUXCORE_INSECURE_DISABLE_TLS for production",
+		)
+	}
+	m.grpcSrv = grpc.NewServer(grpcOpts...)
 	backupv1.RegisterBackupServiceServer(m.grpcSrv, m)
 	modulesdk.RegisterSettings(m.grpcSrv, m.id, m)
 	go func() {
@@ -163,6 +180,25 @@ func (m *Module) Start(ctx context.Context) error {
 		_ = http.Serve(m.httpLis, mux)
 	}()
 	return nil
+}
+
+// resolveGRPCAddr prefers loopback when plaintext is explicitly enabled and the
+// bind address would otherwise listen on all interfaces.
+func resolveGRPCAddr(addr string) string {
+	if !grpctls.InsecureAllowed() {
+		return addr
+	}
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		if strings.HasPrefix(addr, ":") {
+			return "127.0.0.1" + addr
+		}
+		return addr
+	}
+	if host == "" || host == "0.0.0.0" {
+		return "127.0.0.1:" + port
+	}
+	return addr
 }
 
 func (m *Module) Stop(ctx context.Context) error {

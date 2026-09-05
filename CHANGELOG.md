@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Enable TLS on the module gRPC listener by default via `internal/grpctls`; plaintext only when `MUXCORE_INSECURE_DISABLE_TLS=true` (or `MUXCORE_GRPC_INSECURE`).
+
 ## [0.1.1] — 2026-08-10
 
 ### Added

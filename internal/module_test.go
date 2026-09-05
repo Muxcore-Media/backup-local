@@ -56,6 +56,7 @@ func TestModuleInfo(t *testing.T) {
 
 func TestModuleLifecycle(t *testing.T) {
 	m := testModule(t)
+	t.Setenv("BACKUP_TLS_DIR", t.TempDir())
 	ctx := context.Background()
 	if err := m.Init(ctx); err != nil {
 		t.Fatalf("Init: %v", err)
@@ -216,6 +217,19 @@ func TestRestoreRequiresTarget(t *testing.T) {
 	_, err := m.RestoreBackup(context.Background(), &backupv1.RestoreBackupRequest{BackupId: "x"})
 	if status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("want InvalidArgument, got %v", err)
+	}
+}
+
+func TestResolveGRPCAddr_InsecureLoopback(t *testing.T) {
+	t.Setenv("MUXCORE_INSECURE_DISABLE_TLS", "true")
+	if got := resolveGRPCAddr(":9302"); got != "127.0.0.1:9302" {
+		t.Fatalf("got %q", got)
+	}
+	if got := resolveGRPCAddr("0.0.0.0:9302"); got != "127.0.0.1:9302" {
+		t.Fatalf("got %q", got)
+	}
+	if got := resolveGRPCAddr("192.168.1.1:9302"); got != "192.168.1.1:9302" {
+		t.Fatalf("got %q", got)
 	}
 }
 
