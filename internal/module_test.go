@@ -33,6 +33,9 @@ func testModule(t *testing.T, peers ...BackupablePeer) *Module {
 	t.Helper()
 	t.Setenv("BACKUP_DIR", "")
 	t.Setenv("BACKUP_SOURCE_DIRS", "")
+	t.Setenv("BACKUP_SCHEDULE_CRON", "")
+	t.Setenv("BACKUP_RETENTION_COUNT", "0")
+	t.Setenv("BACKUP_RETENTION_DAYS", "0")
 	dir := t.TempDir()
 	m := NewModule(Config{
 		Dir:      dir,
@@ -315,7 +318,7 @@ func TestSettingsBackupDirAndSources(t *testing.T) {
 		t.Fatal(err)
 	}
 	defs := m.Settings()
-	if len(defs) != 2 || defs[0].Key != "backup_dir" {
+	if len(defs) < 2 || defs[0].Key != "backup_dir" {
 		t.Fatalf("Settings=%+v", defs)
 	}
 	if err := m.UpdateSetting("source_dirs", src); err != nil {

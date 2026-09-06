@@ -41,26 +41,33 @@ type BackupablePeer struct {
 
 type Module struct {
 	backupv1.UnimplementedBackupServiceServer
-	mu       sync.Mutex
-	dir      string
-	sources  []string
-	peers    map[string]contracts.Backupable
-	backups  map[string]backupMeta
-	grpcSrv  *grpc.Server
-	grpcLis  net.Listener
-	httpLis  net.Listener
-	id       string
-	grpcAddr string
-	httpAddr string
+	mu        sync.Mutex
+	dir       string
+	sources   []string
+	peers     map[string]contracts.Backupable
+	backups   map[string]backupMeta
+	grpcSrv   *grpc.Server
+	grpcLis   net.Listener
+	httpLis   net.Listener
+	id        string
+	grpcAddr  string
+	httpAddr  string
+	schedule  string
+	retention retentionConfig
+	scheduler *backupScheduler
+	runCtx    context.Context
 }
 
 type Config struct {
-	ID         string
-	Dir        string
-	SourceDirs []string
-	Peers      []BackupablePeer
-	GRPCAddr   string
-	HTTPAddr   string
+	ID             string
+	Dir            string
+	SourceDirs     []string
+	Peers          []BackupablePeer
+	GRPCAddr       string
+	HTTPAddr       string
+	ScheduleCron   string
+	RetentionCount int
+	RetentionDays  int
 }
 
 func NewModule(cfg Config) *Module {
@@ -83,6 +90,19 @@ func NewModule(cfg Config) *Module {
 	if v := os.Getenv("BACKUP_SOURCE_DIRS"); v != "" {
 		cfg.SourceDirs = splitCSV(v)
 	}
+	schedule := cfg.ScheduleCron
+	if schedule == "" {
+		schedule = scheduleFromEnv()
+	}
+	retention := retentionFromEnv()
+	if cfg.RetentionCount > 0 || cfg.RetentionDays > 0 {
+		if cfg.RetentionCount > 0 {
+			retention.Count = cfg.RetentionCount
+		}
+		if cfg.RetentionDays > 0 {
+			retention.Days = cfg.RetentionDays
+		}
+	}
 	peers := make(map[string]contracts.Backupable, len(cfg.Peers))
 	for _, p := range cfg.Peers {
 		if p.ID == "" || p.Backend == nil {
@@ -91,13 +111,16 @@ func NewModule(cfg Config) *Module {
 		peers[p.ID] = p.Backend
 	}
 	return &Module{
-		id:       cfg.ID,
-		dir:      cfg.Dir,
-		sources:  append([]string(nil), cfg.SourceDirs...),
-		peers:    peers,
-		grpcAddr: cfg.GRPCAddr,
-		httpAddr: cfg.HTTPAddr,
-		backups:  make(map[string]backupMeta),
+		id:        cfg.ID,
+		dir:       cfg.Dir,
+		sources:   append([]string(nil), cfg.SourceDirs...),
+		peers:     peers,
+		grpcAddr:  cfg.GRPCAddr,
+		httpAddr:  cfg.HTTPAddr,
+		backups:   make(map[string]backupMeta),
+		schedule:  schedule,
+		retention: retention,
+		scheduler: newBackupScheduler(),
 	}
 }
 
@@ -142,7 +165,7 @@ func (m *Module) Init(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("listen HTTP %s: %w", m.httpAddr, err)
 	}
-	slog.Info("backup-local initialized", "dir", m.dir, "backups", len(m.backups))
+	slog.Info("backup-local initialized", "dir", m.dir, "backups", len(m.backups), "schedule", m.schedule, "retention_count", m.retention.Count, "retention_days", m.retention.Days)
 	return nil
 }
 
@@ -179,6 +202,12 @@ func (m *Module) Start(ctx context.Context) error {
 		slog.Info("backup HTTP started", "addr", m.httpAddr)
 		_ = http.Serve(m.httpLis, mux)
 	}()
+	if m.schedule != "" {
+		m.runCtx = ctx
+		if err := m.scheduler.start(ctx, m, m.schedule); err != nil {
+			slog.Error("backup schedule not started", "cron", m.schedule, "error", err)
+		}
+	}
 	return nil
 }
 
@@ -202,6 +231,9 @@ func resolveGRPCAddr(addr string) string {
 }
 
 func (m *Module) Stop(ctx context.Context) error {
+	if m.scheduler != nil {
+		m.scheduler.stop()
+	}
 	if m.grpcSrv != nil {
 		m.grpcSrv.GracefulStop()
 	}
@@ -299,6 +331,7 @@ func (m *Module) CreateBackup(ctx context.Context, req *backupv1.CreateBackupReq
 	m.mu.Unlock()
 
 	slog.Info("backup created", "id", id, "size", meta.Size, "checksum", meta.Checksum, "entries", len(entries))
+	m.applyRetention()
 	return &backupv1.CreateBackupResponse{Backup: toProto(meta)}, nil
 }
 
@@ -378,17 +411,14 @@ func (m *Module) ListBackups(ctx context.Context, req *backupv1.ListBackupsReque
 
 func (m *Module) DeleteBackup(ctx context.Context, req *backupv1.DeleteBackupRequest) (*backupv1.DeleteBackupResponse, error) {
 	m.mu.Lock()
-	meta, ok := m.backups[req.GetBackupId()]
-	dir := m.dir
-	if ok {
-		delete(m.backups, req.GetBackupId())
-		m.saveIndex()
-	}
+	_, ok := m.backups[req.GetBackupId()]
 	m.mu.Unlock()
 	if !ok {
 		return nil, status.Error(codes.NotFound, "backup not found")
 	}
-	_ = os.Remove(archivePath(dir, meta.ID))
+	if err := m.deleteBackupByID(req.GetBackupId()); err != nil {
+		return nil, status.Errorf(codes.Internal, "delete backup: %v", err)
+	}
 	return &backupv1.DeleteBackupResponse{Status: "ok"}, nil
 }
 
