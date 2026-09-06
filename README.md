@@ -41,8 +41,17 @@ modules/<id>/state.bin   # Backupable exports
 |----------|---------|-------------|
 | `BACKUP_DIR` | `backups` | Directory for archives and `index.json` |
 | `BACKUP_SOURCE_DIRS` | _(empty)_ | Comma-separated directories included in every create |
+| `BACKUP_SCHEDULE_CRON` | _(empty)_ | Standard 5-field cron for automatic backups (e.g. `0 3 * * *` daily at 03:00) |
+| `BACKUP_RETENTION_COUNT` | `10` | Keep at most this many backups; `0` disables count-based pruning |
+| `BACKUP_RETENTION_DAYS` | `0` | Delete backups older than this many days; `0` disables age-based pruning |
 | gRPC listen | `:9302` | `BackupService` address |
 | HTTP listen | `:9303` | `/health` |
+
+Scheduled backups use an in-process cron runner (`robfig/cron`) so operators do not need external cron. The MuxCore **scheduler-cron** sidecar can also trigger `CreateBackup` over gRPC if you prefer centralized scheduling.
+
+After each create (manual or scheduled), retention runs: backups beyond the count limit **or** older than the age limit are deleted (oldest first).
+
+Settings keys `backup_schedule_cron`, `backup_retention_count`, and `backup_retention_days` mirror the env vars and can be updated live via the MuxCore settings API.
 
 ---
 
@@ -53,6 +62,9 @@ make build
 
 export MUXCORE_INSECURE_DISABLE_TLS=true
 export BACKUP_SOURCE_DIRS=/var/lib/muxcore/data
+export BACKUP_SCHEDULE_CRON="0 3 * * *"
+export BACKUP_RETENTION_COUNT=10
+export BACKUP_RETENTION_DAYS=30
 ./backup-local --muxcore-mesh-addr localhost:9090
 ```
 
