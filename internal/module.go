@@ -80,10 +80,15 @@ func NewModule(cfg Config) *Module {
 	if cfg.GRPCAddr == "" {
 		cfg.GRPCAddr = "127.0.0.1:9302"
 	}
+	if v := os.Getenv("BACKUP_GRPC_ADDR"); v != "" {
+		cfg.GRPCAddr = v
+	}
 	if cfg.HTTPAddr == "" {
 		cfg.HTTPAddr = ":9303"
 	}
-	cfg.GRPCAddr = resolveGRPCAddr(cfg.GRPCAddr)
+	if !backupGRPCBindAll() {
+		cfg.GRPCAddr = resolveGRPCAddr(cfg.GRPCAddr)
+	}
 	if v := os.Getenv("BACKUP_DIR"); v != "" {
 		cfg.Dir = v
 	}
@@ -209,6 +214,11 @@ func (m *Module) Start(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func backupGRPCBindAll() bool {
+	v := strings.TrimSpace(os.Getenv("BACKUP_GRPC_BIND_ALL"))
+	return v == "1" || strings.EqualFold(v, "true")
 }
 
 // resolveGRPCAddr prefers loopback when plaintext is explicitly enabled and the

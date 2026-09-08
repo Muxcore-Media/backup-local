@@ -40,11 +40,12 @@ modules/<id>/state.bin   # Backupable exports
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `BACKUP_DIR` | `backups` | Directory for archives and `index.json` |
+| `BACKUP_GRPC_ADDR` | `127.0.0.1:9302` | `BackupService` listen address |
+| `BACKUP_GRPC_BIND_ALL` | _(unset)_ | When `true`/`1`, keep `:9302` (needed so compose peers can dial `backup-local:9302` under insecure TLS) |
 | `BACKUP_SOURCE_DIRS` | _(empty)_ | Comma-separated directories included in every create |
 | `BACKUP_SCHEDULE_CRON` | _(empty)_ | Standard 5-field cron for automatic backups (e.g. `0 3 * * *` daily at 03:00) |
 | `BACKUP_RETENTION_COUNT` | `10` | Keep at most this many backups; `0` disables count-based pruning |
 | `BACKUP_RETENTION_DAYS` | `0` | Delete backups older than this many days; `0` disables age-based pruning |
-| gRPC listen | `:9302` | `BackupService` address |
 | HTTP listen | `:9303` | `/health` |
 
 Scheduled backups use an in-process cron runner (`robfig/cron`) so operators do not need external cron. The MuxCore **scheduler-cron** sidecar can also trigger `CreateBackup` over gRPC if you prefer centralized scheduling.

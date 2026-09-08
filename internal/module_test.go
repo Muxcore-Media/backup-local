@@ -236,6 +236,16 @@ func TestResolveGRPCAddr_InsecureLoopback(t *testing.T) {
 	}
 }
 
+func TestNewModule_BindAllKeepsWildcard(t *testing.T) {
+	t.Setenv("MUXCORE_INSECURE_DISABLE_TLS", "true")
+	t.Setenv("BACKUP_GRPC_BIND_ALL", "true")
+	t.Setenv("BACKUP_GRPC_ADDR", ":9302")
+	m := NewModule(Config{})
+	if m.grpcAddr != ":9302" {
+		t.Fatalf("got %q", m.grpcAddr)
+	}
+}
+
 func TestRestoreRejectsTraversal(t *testing.T) {
 	m := testModule(t)
 	ctx := context.Background()
