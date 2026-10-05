@@ -46,6 +46,9 @@ func TestRestoreDrillFreshInstall(t *testing.T) {
 	}
 
 	m1 := testModule(t)
+	m1.mu.Lock()
+	m1.sources = []string{src}
+	m1.mu.Unlock()
 	created, err := m1.CreateBackup(ctx, &backupv1.CreateBackupRequest{SourcePaths: []string{src}})
 	if err != nil {
 		t.Fatal(err)
@@ -72,7 +75,9 @@ func TestRestoreDrillFreshInstall(t *testing.T) {
 	m2 := NewModule(Config{Dir: fresh, GRPCAddr: "127.0.0.1:0", HTTPAddr: "127.0.0.1:0"})
 
 	// Restore without Init: unknown ID triggers the rescan.
-	target := filepath.Join(t.TempDir(), "restored")
+	restoreRoot := t.TempDir()
+	t.Setenv("BACKUP_RESTORE_DIR", restoreRoot)
+	target := filepath.Join(restoreRoot, "restored")
 	resp, err := m2.RestoreBackup(ctx, &backupv1.RestoreBackupRequest{BackupId: id, TargetPath: target})
 	if err != nil {
 		t.Fatal(err)
@@ -120,6 +125,9 @@ func TestInitRebuildsIndexAndListVerify(t *testing.T) {
 	}
 	peer := &memPeer{data: []byte("state")}
 	m1 := testModule(t, BackupablePeer{ID: "mod-a", Backend: peer})
+	m1.mu.Lock()
+	m1.sources = []string{src}
+	m1.mu.Unlock()
 	created, err := m1.CreateBackup(ctx, &backupv1.CreateBackupRequest{SourcePaths: []string{src}})
 	if err != nil {
 		t.Fatal(err)
@@ -157,8 +165,10 @@ func TestInitRebuildsIndexAndListVerify(t *testing.T) {
 	}
 
 	// Unknown / hostile IDs still NotFound.
+	restoreRoot := t.TempDir()
+	t.Setenv("BACKUP_RESTORE_DIR", restoreRoot)
 	for _, bad := range []string{"backup_1", "../" + id, "backup_abc"} {
-		_, err := m2.RestoreBackup(ctx, &backupv1.RestoreBackupRequest{BackupId: bad, TargetPath: t.TempDir()})
+		_, err := m2.RestoreBackup(ctx, &backupv1.RestoreBackupRequest{BackupId: bad, TargetPath: restoreRoot})
 		if status.Code(err) != codes.NotFound {
 			t.Errorf("id %q: code = %v", bad, status.Code(err))
 		}

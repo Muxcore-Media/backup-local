@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Security
+- Restore `target_path` is confined to `BACKUP_RESTORE_DIR` (empty allow-list fails closed). Archive entry names use pathguard, so `..` and symlink escapes are refused. Request `source_paths` must resolve inside `BACKUP_SOURCE_DIRS`.
+
 ## [0.1.7] - 2026-10-05
 
 ### Changed

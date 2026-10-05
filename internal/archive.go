@@ -10,10 +10,28 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/Muxcore-Media/core/sdk/go/module/pathguard"
 )
 
 func archivePath(dir, id string) string {
 	return filepath.Join(dir, id+".tar.gz")
+}
+
+func absolutePaths(paths []string) ([]string, error) {
+	out := make([]string, 0, len(paths))
+	for _, p := range paths {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		abs, err := filepath.Abs(p)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, abs)
+	}
+	return out, nil
 }
 
 func sha256File(path string) (string, int64, error) {
@@ -39,31 +57,46 @@ func safeJoin(root, name string) (string, error) {
 	if clean == "." || clean == "" {
 		return "", fmt.Errorf("invalid archive entry name %q", name)
 	}
-	if filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, ".."+string(os.PathSeparator)) {
-		return "", fmt.Errorf("archive entry escapes target: %q", name)
-	}
 	rootAbs, err := filepath.Abs(root)
 	if err != nil {
 		return "", fmt.Errorf("resolve target: %w", err)
 	}
-	rootAbs = filepath.Clean(rootAbs)
-	dest := filepath.Clean(filepath.Join(rootAbs, clean))
-	rel, err := filepath.Rel(rootAbs, dest)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) || filepath.IsAbs(rel) {
-		return "", fmt.Errorf("archive entry escapes target: %q", name)
+	dest, err := pathguard.Join(rootAbs, clean)
+	if err != nil {
+		return "", fmt.Errorf("archive entry escapes target: %q: %w", name, err)
 	}
 	return dest, nil
+}
+
+func restoreRoot() (string, error) {
+	v := strings.TrimSpace(os.Getenv("BACKUP_RESTORE_DIR"))
+	if v == "" {
+		return "", fmt.Errorf("BACKUP_RESTORE_DIR is not configured")
+	}
+	abs, err := filepath.Abs(v)
+	if err != nil {
+		return "", fmt.Errorf("resolve BACKUP_RESTORE_DIR: %w", err)
+	}
+	return abs, nil
 }
 
 func validateTargetDir(target string) (string, error) {
 	if strings.TrimSpace(target) == "" {
 		return "", fmt.Errorf("target_path is required")
 	}
+	root, err := restoreRoot()
+	if err != nil {
+		return "", err
+	}
 	abs, err := filepath.Abs(target)
 	if err != nil {
 		return "", fmt.Errorf("resolve target_path: %w", err)
 	}
-	return filepath.Clean(abs), nil
+	resolved, err := pathguard.Confine(abs, []string{root})
+	if err != nil {
+		return "", fmt.Errorf("target_path outside BACKUP_RESTORE_DIR: %w", err)
+	}
+	return resolved, nil
 }
 
 type tarEntry struct {

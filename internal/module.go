@@ -24,6 +24,7 @@ import (
 	backupv1 "github.com/Muxcore-Media/backup-local/muxcore/backup/v1"
 	"github.com/Muxcore-Media/core/pkg/contracts"
 	modulesdk "github.com/Muxcore-Media/core/sdk/go/module"
+	"github.com/Muxcore-Media/core/sdk/go/module/pathguard"
 )
 
 type backupMeta struct {
@@ -272,7 +273,54 @@ func (m *Module) CreateBackup(ctx context.Context, req *backupv1.CreateBackupReq
 		peers[id] = p
 	}
 	m.mu.Unlock()
-	sources = append(sources, req.GetSourcePaths()...)
+	roots, err := absolutePaths(sources)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "source roots: %v", err)
+	}
+	seen := map[string]struct{}{}
+	var walk []string
+	addSource := func(src string, mustBeInside bool) error {
+		src = strings.TrimSpace(src)
+		if src == "" {
+			return nil
+		}
+		abs, err := filepath.Abs(src)
+		if err != nil {
+			return err
+		}
+		var resolved string
+		if mustBeInside {
+			if len(roots) == 0 {
+				return fmt.Errorf("source %q: BACKUP_SOURCE_DIRS is not configured", src)
+			}
+			resolved, err = pathguard.Confine(abs, roots)
+			if err != nil {
+				return fmt.Errorf("source %q outside BACKUP_SOURCE_DIRS: %w", src, err)
+			}
+		} else {
+			resolved, err = pathguard.Confine(abs, []string{abs})
+			if err != nil {
+				return fmt.Errorf("source %q: %w", src, err)
+			}
+		}
+		if _, ok := seen[resolved]; ok {
+			return nil
+		}
+		seen[resolved] = struct{}{}
+		walk = append(walk, resolved)
+		return nil
+	}
+	for _, src := range sources {
+		if err := addSource(src, false); err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "%v", err)
+		}
+	}
+	for _, src := range req.GetSourcePaths() {
+		if err := addSource(src, true); err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "%v", err)
+		}
+	}
+	sources = walk
 
 	peerIDs := req.GetModuleIds()
 

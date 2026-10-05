@@ -93,6 +93,7 @@ func TestBackupablePeerOnlyRoundTrip(t *testing.T) {
 
 	peer.data = []byte("wiped")
 	target := t.TempDir()
+	t.Setenv("BACKUP_RESTORE_DIR", target)
 	restored, err := m.RestoreBackup(ctx, &backupv1.RestoreBackupRequest{
 		BackupId:   info.GetId(),
 		TargetPath: target,
@@ -133,6 +134,9 @@ func TestRoundTripCreateListRestoreDelete(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	m.mu.Lock()
+	m.sources = []string{src}
+	m.mu.Unlock()
 	created, err := m.CreateBackup(ctx, &backupv1.CreateBackupRequest{
 		SourcePaths: []string{src},
 		ModuleIds:   []string{"mod-a"},
@@ -158,6 +162,7 @@ func TestRoundTripCreateListRestoreDelete(t *testing.T) {
 
 	peer.data = []byte("mutated")
 	target := t.TempDir()
+	t.Setenv("BACKUP_RESTORE_DIR", target)
 	restored, err := m.RestoreBackup(ctx, &backupv1.RestoreBackupRequest{
 		BackupId:   info.GetId(),
 		TargetPath: target,
@@ -206,9 +211,11 @@ func TestRestoreMissingArchive(t *testing.T) {
 	m.backups["ghost"] = backupMeta{ID: "ghost", Checksum: "abc"}
 	m.mu.Unlock()
 
+	target := t.TempDir()
+	t.Setenv("BACKUP_RESTORE_DIR", target)
 	_, err := m.RestoreBackup(ctx, &backupv1.RestoreBackupRequest{
 		BackupId:   "ghost",
-		TargetPath: t.TempDir(),
+		TargetPath: target,
 	})
 	if status.Code(err) != codes.NotFound {
 		t.Fatalf("want NotFound, got %v", err)
@@ -266,9 +273,11 @@ func TestRestoreRejectsTraversal(t *testing.T) {
 	m.backups[id] = backupMeta{ID: id, Size: size, Checksum: sum}
 	m.mu.Unlock()
 
+	target := t.TempDir()
+	t.Setenv("BACKUP_RESTORE_DIR", target)
 	_, err = m.RestoreBackup(ctx, &backupv1.RestoreBackupRequest{
 		BackupId:   id,
-		TargetPath: t.TempDir(),
+		TargetPath: target,
 	})
 	if status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("want InvalidArgument for traversal, got %v", err)
@@ -310,8 +319,50 @@ func TestSafeJoin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if filepath.Dir(dest) != filepath.Join(root, "ok") {
+	rootReal, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Dir(dest) != filepath.Join(rootReal, "ok") {
 		t.Fatalf("dest=%q", dest)
+	}
+}
+
+func TestSafeJoinRejectsSymlinkEscape(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(root, "link")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := safeJoin(root, filepath.Join("link", "pwned.txt")); err == nil {
+		t.Fatal("expected symlink escape failure")
+	}
+}
+
+func TestRestoreRejectsTargetOutsideRoot(t *testing.T) {
+	m := testModule(t)
+	root := t.TempDir()
+	t.Setenv("BACKUP_RESTORE_DIR", root)
+	_, err := m.RestoreBackup(context.Background(), &backupv1.RestoreBackupRequest{
+		BackupId:   "missing",
+		TargetPath: t.TempDir(),
+	})
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("want InvalidArgument, got %v", err)
+	}
+}
+
+func TestCreateBackupRejectsSourceOutsideAllowList(t *testing.T) {
+	m := testModule(t)
+	allowed := t.TempDir()
+	m.mu.Lock()
+	m.sources = []string{allowed}
+	m.mu.Unlock()
+	_, err := m.CreateBackup(context.Background(), &backupv1.CreateBackupRequest{
+		SourcePaths: []string{t.TempDir()},
+	})
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("want InvalidArgument, got %v", err)
 	}
 }
 
