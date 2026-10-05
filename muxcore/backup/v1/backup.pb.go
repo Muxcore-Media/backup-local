@@ -468,6 +468,151 @@ func (x *DeleteBackupResponse) GetStatus() string {
 	return ""
 }
 
+type VerifyBackupRequest struct {
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	BackupId string                 `protobuf:"bytes,1,opt,name=backup_id,json=backupId,proto3" json:"backup_id,omitempty"`
+	// Extract to a temp dir to validate archive integrity without applying restore.
+	RestoreTest   bool `protobuf:"varint,2,opt,name=restore_test,json=restoreTest,proto3" json:"restore_test,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *VerifyBackupRequest) Reset() {
+	*x = VerifyBackupRequest{}
+	mi := &file_muxcore_backup_v1_backup_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *VerifyBackupRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*VerifyBackupRequest) ProtoMessage() {}
+
+func (x *VerifyBackupRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_muxcore_backup_v1_backup_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use VerifyBackupRequest.ProtoReflect.Descriptor instead.
+func (*VerifyBackupRequest) Descriptor() ([]byte, []int) {
+	return file_muxcore_backup_v1_backup_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *VerifyBackupRequest) GetBackupId() string {
+	if x != nil {
+		return x.BackupId
+	}
+	return ""
+}
+
+func (x *VerifyBackupRequest) GetRestoreTest() bool {
+	if x != nil {
+		return x.RestoreTest
+	}
+	return false
+}
+
+type VerifyBackupResponse struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Valid          bool                   `protobuf:"varint,1,opt,name=valid,proto3" json:"valid,omitempty"`
+	ChecksumSha256 string                 `protobuf:"bytes,2,opt,name=checksum_sha256,json=checksumSha256,proto3" json:"checksum_sha256,omitempty"`
+	SizeBytes      int64                  `protobuf:"varint,3,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`
+	ChecksumOk     bool                   `protobuf:"varint,4,opt,name=checksum_ok,json=checksumOk,proto3" json:"checksum_ok,omitempty"`
+	RestoreTestOk  bool                   `protobuf:"varint,5,opt,name=restore_test_ok,json=restoreTestOk,proto3" json:"restore_test_ok,omitempty"`
+	FilesInArchive int64                  `protobuf:"varint,6,opt,name=files_in_archive,json=filesInArchive,proto3" json:"files_in_archive,omitempty"`
+	Message        string                 `protobuf:"bytes,7,opt,name=message,proto3" json:"message,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *VerifyBackupResponse) Reset() {
+	*x = VerifyBackupResponse{}
+	mi := &file_muxcore_backup_v1_backup_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *VerifyBackupResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*VerifyBackupResponse) ProtoMessage() {}
+
+func (x *VerifyBackupResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_muxcore_backup_v1_backup_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use VerifyBackupResponse.ProtoReflect.Descriptor instead.
+func (*VerifyBackupResponse) Descriptor() ([]byte, []int) {
+	return file_muxcore_backup_v1_backup_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *VerifyBackupResponse) GetValid() bool {
+	if x != nil {
+		return x.Valid
+	}
+	return false
+}
+
+func (x *VerifyBackupResponse) GetChecksumSha256() string {
+	if x != nil {
+		return x.ChecksumSha256
+	}
+	return ""
+}
+
+func (x *VerifyBackupResponse) GetSizeBytes() int64 {
+	if x != nil {
+		return x.SizeBytes
+	}
+	return 0
+}
+
+func (x *VerifyBackupResponse) GetChecksumOk() bool {
+	if x != nil {
+		return x.ChecksumOk
+	}
+	return false
+}
+
+func (x *VerifyBackupResponse) GetRestoreTestOk() bool {
+	if x != nil {
+		return x.RestoreTestOk
+	}
+	return false
+}
+
+func (x *VerifyBackupResponse) GetFilesInArchive() int64 {
+	if x != nil {
+		return x.FilesInArchive
+	}
+	return 0
+}
+
+func (x *VerifyBackupResponse) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
 var File_muxcore_backup_v1_backup_proto protoreflect.FileDescriptor
 
 const file_muxcore_backup_v1_backup_proto_rawDesc = "" +
@@ -501,12 +646,26 @@ const file_muxcore_backup_v1_backup_proto_rawDesc = "" +
 	"\x13DeleteBackupRequest\x12\x1b\n" +
 	"\tbackup_id\x18\x01 \x01(\tR\bbackupId\".\n" +
 	"\x14DeleteBackupResponse\x12\x16\n" +
-	"\x06status\x18\x01 \x01(\tR\x06status2\x93\x03\n" +
+	"\x06status\x18\x01 \x01(\tR\x06status\"U\n" +
+	"\x13VerifyBackupRequest\x12\x1b\n" +
+	"\tbackup_id\x18\x01 \x01(\tR\bbackupId\x12!\n" +
+	"\frestore_test\x18\x02 \x01(\bR\vrestoreTest\"\x81\x02\n" +
+	"\x14VerifyBackupResponse\x12\x14\n" +
+	"\x05valid\x18\x01 \x01(\bR\x05valid\x12'\n" +
+	"\x0fchecksum_sha256\x18\x02 \x01(\tR\x0echecksumSha256\x12\x1d\n" +
+	"\n" +
+	"size_bytes\x18\x03 \x01(\x03R\tsizeBytes\x12\x1f\n" +
+	"\vchecksum_ok\x18\x04 \x01(\bR\n" +
+	"checksumOk\x12&\n" +
+	"\x0frestore_test_ok\x18\x05 \x01(\bR\rrestoreTestOk\x12(\n" +
+	"\x10files_in_archive\x18\x06 \x01(\x03R\x0efilesInArchive\x12\x18\n" +
+	"\amessage\x18\a \x01(\tR\amessage2\xf4\x03\n" +
 	"\rBackupService\x12_\n" +
 	"\fCreateBackup\x12&.muxcore.backup.v1.CreateBackupRequest\x1a'.muxcore.backup.v1.CreateBackupResponse\x12b\n" +
 	"\rRestoreBackup\x12'.muxcore.backup.v1.RestoreBackupRequest\x1a(.muxcore.backup.v1.RestoreBackupResponse\x12\\\n" +
 	"\vListBackups\x12%.muxcore.backup.v1.ListBackupsRequest\x1a&.muxcore.backup.v1.ListBackupsResponse\x12_\n" +
-	"\fDeleteBackup\x12&.muxcore.backup.v1.DeleteBackupRequest\x1a'.muxcore.backup.v1.DeleteBackupResponseBBZ@github.com/Muxcore-Media/backup-local/muxcore/backup/v1;backupv1b\x06proto3"
+	"\fDeleteBackup\x12&.muxcore.backup.v1.DeleteBackupRequest\x1a'.muxcore.backup.v1.DeleteBackupResponse\x12_\n" +
+	"\fVerifyBackup\x12&.muxcore.backup.v1.VerifyBackupRequest\x1a'.muxcore.backup.v1.VerifyBackupResponseBBZ@github.com/Muxcore-Media/backup-local/muxcore/backup/v1;backupv1b\x06proto3"
 
 var (
 	file_muxcore_backup_v1_backup_proto_rawDescOnce sync.Once
@@ -520,7 +679,7 @@ func file_muxcore_backup_v1_backup_proto_rawDescGZIP() []byte {
 	return file_muxcore_backup_v1_backup_proto_rawDescData
 }
 
-var file_muxcore_backup_v1_backup_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_muxcore_backup_v1_backup_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_muxcore_backup_v1_backup_proto_goTypes = []any{
 	(*BackupInfo)(nil),            // 0: muxcore.backup.v1.BackupInfo
 	(*CreateBackupRequest)(nil),   // 1: muxcore.backup.v1.CreateBackupRequest
@@ -531,23 +690,27 @@ var file_muxcore_backup_v1_backup_proto_goTypes = []any{
 	(*ListBackupsResponse)(nil),   // 6: muxcore.backup.v1.ListBackupsResponse
 	(*DeleteBackupRequest)(nil),   // 7: muxcore.backup.v1.DeleteBackupRequest
 	(*DeleteBackupResponse)(nil),  // 8: muxcore.backup.v1.DeleteBackupResponse
+	(*VerifyBackupRequest)(nil),   // 9: muxcore.backup.v1.VerifyBackupRequest
+	(*VerifyBackupResponse)(nil),  // 10: muxcore.backup.v1.VerifyBackupResponse
 }
 var file_muxcore_backup_v1_backup_proto_depIdxs = []int32{
-	0, // 0: muxcore.backup.v1.CreateBackupResponse.backup:type_name -> muxcore.backup.v1.BackupInfo
-	0, // 1: muxcore.backup.v1.ListBackupsResponse.backups:type_name -> muxcore.backup.v1.BackupInfo
-	1, // 2: muxcore.backup.v1.BackupService.CreateBackup:input_type -> muxcore.backup.v1.CreateBackupRequest
-	3, // 3: muxcore.backup.v1.BackupService.RestoreBackup:input_type -> muxcore.backup.v1.RestoreBackupRequest
-	5, // 4: muxcore.backup.v1.BackupService.ListBackups:input_type -> muxcore.backup.v1.ListBackupsRequest
-	7, // 5: muxcore.backup.v1.BackupService.DeleteBackup:input_type -> muxcore.backup.v1.DeleteBackupRequest
-	2, // 6: muxcore.backup.v1.BackupService.CreateBackup:output_type -> muxcore.backup.v1.CreateBackupResponse
-	4, // 7: muxcore.backup.v1.BackupService.RestoreBackup:output_type -> muxcore.backup.v1.RestoreBackupResponse
-	6, // 8: muxcore.backup.v1.BackupService.ListBackups:output_type -> muxcore.backup.v1.ListBackupsResponse
-	8, // 9: muxcore.backup.v1.BackupService.DeleteBackup:output_type -> muxcore.backup.v1.DeleteBackupResponse
-	6, // [6:10] is the sub-list for method output_type
-	2, // [2:6] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	0,  // 0: muxcore.backup.v1.CreateBackupResponse.backup:type_name -> muxcore.backup.v1.BackupInfo
+	0,  // 1: muxcore.backup.v1.ListBackupsResponse.backups:type_name -> muxcore.backup.v1.BackupInfo
+	1,  // 2: muxcore.backup.v1.BackupService.CreateBackup:input_type -> muxcore.backup.v1.CreateBackupRequest
+	3,  // 3: muxcore.backup.v1.BackupService.RestoreBackup:input_type -> muxcore.backup.v1.RestoreBackupRequest
+	5,  // 4: muxcore.backup.v1.BackupService.ListBackups:input_type -> muxcore.backup.v1.ListBackupsRequest
+	7,  // 5: muxcore.backup.v1.BackupService.DeleteBackup:input_type -> muxcore.backup.v1.DeleteBackupRequest
+	9,  // 6: muxcore.backup.v1.BackupService.VerifyBackup:input_type -> muxcore.backup.v1.VerifyBackupRequest
+	2,  // 7: muxcore.backup.v1.BackupService.CreateBackup:output_type -> muxcore.backup.v1.CreateBackupResponse
+	4,  // 8: muxcore.backup.v1.BackupService.RestoreBackup:output_type -> muxcore.backup.v1.RestoreBackupResponse
+	6,  // 9: muxcore.backup.v1.BackupService.ListBackups:output_type -> muxcore.backup.v1.ListBackupsResponse
+	8,  // 10: muxcore.backup.v1.BackupService.DeleteBackup:output_type -> muxcore.backup.v1.DeleteBackupResponse
+	10, // 11: muxcore.backup.v1.BackupService.VerifyBackup:output_type -> muxcore.backup.v1.VerifyBackupResponse
+	7,  // [7:12] is the sub-list for method output_type
+	2,  // [2:7] is the sub-list for method input_type
+	2,  // [2:2] is the sub-list for extension type_name
+	2,  // [2:2] is the sub-list for extension extendee
+	0,  // [0:2] is the sub-list for field type_name
 }
 
 func init() { file_muxcore_backup_v1_backup_proto_init() }
@@ -561,7 +724,7 @@ func file_muxcore_backup_v1_backup_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_muxcore_backup_v1_backup_proto_rawDesc), len(file_muxcore_backup_v1_backup_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   9,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

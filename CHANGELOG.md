@@ -11,7 +11,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.4] - 2026-10-05
+
+
+### Added
+- `integsupport` package (`NewTestModule`, `Start`, aliases of the internal `Module`/`Config`) for umbrella integration tests (roadmap T-M1-06, NFR-MNT-004).
+- `BackupService.VerifyBackup` RPC (SHA-256 check against the index, optional restore test into a temp dir); proto and generated code updated.
 
 ## [0.1.3] - 2026-10-05
 

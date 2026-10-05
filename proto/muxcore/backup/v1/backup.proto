@@ -10,6 +10,7 @@ service BackupService {
   rpc RestoreBackup(RestoreBackupRequest) returns (RestoreBackupResponse);
   rpc ListBackups(ListBackupsRequest) returns (ListBackupsResponse);
   rpc DeleteBackup(DeleteBackupRequest) returns (DeleteBackupResponse);
+  rpc VerifyBackup(VerifyBackupRequest) returns (VerifyBackupResponse);
 }
 
 message BackupInfo {
@@ -54,4 +55,20 @@ message DeleteBackupRequest {
 
 message DeleteBackupResponse {
   string status = 1;
+}
+
+message VerifyBackupRequest {
+  string backup_id = 1;
+  // Extract to a temp dir to validate archive integrity without applying restore.
+  bool restore_test = 2;
+}
+
+message VerifyBackupResponse {
+  bool valid = 1;
+  string checksum_sha256 = 2;
+  int64 size_bytes = 3;
+  bool checksum_ok = 4;
+  bool restore_test_ok = 5;
+  int64 files_in_archive = 6;
+  string message = 7;
 }
