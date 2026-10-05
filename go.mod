@@ -3,9 +3,9 @@ module github.com/Muxcore-Media/backup-local
 go 1.26.6
 
 require (
-	github.com/Muxcore-Media/core v0.6.0
+	github.com/Muxcore-Media/core v0.6.12
 	github.com/Muxcore-Media/core/pkg/contracts v0.6.0
-	github.com/Muxcore-Media/core/sdk/go/module v0.6.0
+	github.com/Muxcore-Media/core/sdk/go/module v0.6.3
 	github.com/robfig/cron/v3 v3.0.1
 	google.golang.org/grpc v1.83.2
 	google.golang.org/protobuf v1.36.11

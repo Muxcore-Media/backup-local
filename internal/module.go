@@ -19,6 +19,7 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
 
+	manifest "github.com/Muxcore-Media/backup-local"
 	"github.com/Muxcore-Media/backup-local/internal/grpctls"
 	backupv1 "github.com/Muxcore-Media/backup-local/muxcore/backup/v1"
 	"github.com/Muxcore-Media/core/pkg/contracts"
@@ -148,7 +149,7 @@ func (m *Module) Info() contracts.ModuleInfo {
 	return contracts.ModuleInfo{
 		ID:           m.id,
 		Name:         "Backup Local",
-		Version:      "0.1.2",
+		Version:      modulesdk.ManifestVersion(manifest.ManifestJSON),
 		Roles:        []string{"infrastructure"},
 		Description:  "Local filesystem backup/restore provider",
 		Author:       "MuxCore",
