@@ -31,6 +31,9 @@ type backupMeta struct {
 	Size      int64    `json:"size"`
 	Checksum  string   `json:"checksum_sha256"`
 	ModuleIDs []string `json:"module_ids"`
+	// Recovered marks entries rebuilt by scanning BACKUP_DIR (no index.json
+	// record existed); module_ids come from the archive contents.
+	Recovered bool `json:"recovered,omitempty"`
 }
 
 // BackupablePeer is a named Backupable used when exporting/importing module state.
@@ -161,6 +164,7 @@ func (m *Module) Init(ctx context.Context) error {
 	if err := m.loadIndex(); err != nil {
 		slog.Warn("could not load backup index", "error", err)
 	}
+	m.rescanIndex()
 	var err error
 	m.grpcLis, err = net.Listen("tcp", m.grpcAddr)
 	if err != nil {
@@ -356,6 +360,12 @@ func (m *Module) RestoreBackup(ctx context.Context, req *backupv1.RestoreBackupR
 	}
 
 	m.mu.Lock()
+	_, ok := m.backups[backupID]
+	m.mu.Unlock()
+	if !ok {
+		m.rescanIndex()
+	}
+	m.mu.Lock()
 	meta, ok := m.backups[backupID]
 	dir := m.dir
 	peers := make(map[string]contracts.Backupable, len(m.peers))
@@ -407,6 +417,7 @@ func (m *Module) RestoreBackup(ctx context.Context, req *backupv1.RestoreBackupR
 }
 
 func (m *Module) ListBackups(ctx context.Context, req *backupv1.ListBackupsRequest) (*backupv1.ListBackupsResponse, error) {
+	m.rescanIndex()
 	m.mu.Lock()
 	list := make([]*backupv1.BackupInfo, 0, len(m.backups))
 	for _, b := range m.backups {

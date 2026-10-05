@@ -1,7 +1,7 @@
 {
   "name": "Backup Local",
   "description": "Local filesystem backup/restore provider",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "author": "MuxCore",
   "roles": [
     "infrastructure"

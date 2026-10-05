@@ -24,6 +24,10 @@ RestoreBackup ──→ verify checksum ──→ safe untar into target_path �
 
 Empty archives are rejected (`FailedPrecondition`). Each backup records size and SHA-256 in `index.json`.
 
+**Index rescan (restore drill).** On `Init`, and whenever `ListBackups`, `VerifyBackup`, or `RestoreBackup` meets a backup ID that is not in `index.json`, the module scans `BACKUP_DIR` for `backup_<digits>.tar.gz` files that are not indexed, computes size and SHA-256, reads module IDs from the archive's `modules/<id>/state.bin` entries, derives the timestamp from the filename (falling back to file mtime), flags the entry `"recovered": true`, and persists the rebuilt `index.json`. Only that strict filename shape is accepted; symlinks and unreadable archives are skipped. This lets an archive copied into a fresh install's `BACKUP_DIR` be restored without its original index.
+
+**Quiescing.** `CreateBackup` copies source directories file by file without coordinating with writers. Source directories **must not be written during a backup**, or the archive may be torn (for example a SQLite database and its `-wal` captured at different points). Stop the writer, or snapshot first, until a mesh-callable `Backupable` quiesce service exists (future ADR).
+
 **RestoreBackup** requires `target_path`. It refuses missing archives, checksum mismatches, and path-traversal entries (`../`). After a safe extract, registered peers whose state is present in the archive receive `ImportState`.
 
 Archive layout:

@@ -11,6 +11,18 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.5] - 2026-10-05
+
+
+### Added
+
+- Index rescan: archives present in `BACKUP_DIR` but missing from `index.json` are indexed on `Init` and on unknown-ID `ListBackups`/`VerifyBackup`/`RestoreBackup` (checksum, size, module IDs from archive, `recovered` flag; strict `backup_<digits>.tar.gz` names only). Enables restore drills on a fresh install (FR-BAK-002/004, T-M2-05).
+- Restore-drill round-trip tests (archive-only fresh install; SQLite-shaped db + WAL compared byte-for-byte, as no SQLite driver is a dependency).
+
+### Documentation
+
+- README: source directories must be quiescent during backup (torn-archive risk) pending a mesh-callable Backupable service.
+
 ## [0.1.4] - 2026-10-05
 
 

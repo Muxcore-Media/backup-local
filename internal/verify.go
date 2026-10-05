@@ -18,6 +18,12 @@ func (m *Module) VerifyBackup(ctx context.Context, req *backupv1.VerifyBackupReq
 		return nil, status.Error(codes.InvalidArgument, "backup_id is required")
 	}
 	m.mu.Lock()
+	_, ok := m.backups[id]
+	m.mu.Unlock()
+	if !ok {
+		m.rescanIndex()
+	}
+	m.mu.Lock()
 	meta, ok := m.backups[id]
 	dir := m.dir
 	m.mu.Unlock()
